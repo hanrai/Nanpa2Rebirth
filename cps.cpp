@@ -111,7 +111,7 @@ void CPS::setMoveInfo(quint32 moveInfoIndex, quint32 moveCommandCombosOffset)
        return;
 
     pMoveInfo = &pMoveInfos[moveInfoIndex];
-    if(pMoveInfo->flag=0xFF)
+    if(pMoveInfo->flag == 0xFF)
         return;
 
     pMoveInfo->moveCommandCombosOffset = moveCommandCombosOffset;
