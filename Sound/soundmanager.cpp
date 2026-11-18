@@ -1,43 +1,78 @@
 #include "soundmanager.h"
+#include "Sound/WaveFileHeader.h"
 #include <QDebug>
 
 SoundManager::SoundManager(QObject *parent) :
     QObject(parent)
 {
-
 }
 
-void SoundManager::Play(QByteArray data, bool bLoop)
+void SoundManager::playBgm(QByteArray data, bool loop)
 {
-    WaveFileHeader *header = (WaveFileHeader*)data.data();
+    startPlayback(bgm, std::move(data), loop);
+}
+
+void SoundManager::playVoice(QByteArray data)
+{
+    startPlayback(voice, std::move(data), false);
+}
+
+void SoundManager::startPlayback(Channel &channel, QByteArray data, bool loop)
+{
+    if (channel.player)
+        channel.player->stop();
+
+    delete channel.player;
+    channel.player = nullptr;
+    delete channel.buffer;
+    channel.buffer = nullptr;
+
+    if (data.size() < 44)
+        return;
+
+    channel.data = std::move(data);
+
+    const auto *header =
+        reinterpret_cast<const WaveFileHeader *>(channel.data.constData());
 
     QAudioFormat format;
     format.setSampleRate(header->sampleRate);
     format.setChannelCount(header->channelCount);
-    format.setSampleSize(header->bits_per_sample);
-    format.setCodec("audio/pcm");
-    format.setByteOrder(QAudioFormat::LittleEndian);
-    format.setSampleType(QAudioFormat::SignedInt);
 
-    char* audioRawData = data.data() + 44;
+    if (header->bits_per_sample != 16) {
+        qWarning() << "Unsupported PCM bit depth:"
+                   << header->bits_per_sample;
+        return;
+    }
 
-    buffer = decltype(buffer)(new QBuffer(this));
-    buffer->setData(audioRawData, header->bytes_in_data);
-    buffer->open(QIODevice::ReadOnly);
+    format.setSampleFormat(QAudioFormat::Int16);
 
-    player = decltype(player)(new QAudioOutput(format, this));
-qDebug()<<"Error:"<<player->error();
-    if(bLoop)
-        connect(player.data(), &QAudioOutput::stateChanged,
-                [&](QAudio::State state)
-        {
-            if(state == QAudio::IdleState)
-            {
-                buffer->seek(0);
-                player->start(buffer.data());
+    const qsizetype available = channel.data.size() - 44;
+    const qsizetype pcmSize = header->bytes_in_data;
+
+    if (pcmSize < 0 || pcmSize > available) {
+        qWarning() << "Invalid WAV payload length";
+        return;
+    }
+
+    channel.buffer = new QBuffer(this);
+    channel.buffer->setData(channel.data.mid(44, pcmSize));
+
+    if (!channel.buffer->open(QIODevice::ReadOnly))
+        return;
+
+    channel.player = new QAudioSink(format, this);
+
+    if (loop) {
+        connect(channel.player, &QAudioSink::stateChanged,
+                this, [this, &channel](QAudio::State state) {
+            if (state == QAudio::IdleState &&
+                channel.player && channel.buffer) {
+                channel.buffer->seek(0);
+                channel.player->start(channel.buffer);
             }
         });
+    }
 
-    player->start(buffer.data());
-qDebug()<<"PlayError:"<<player->error();
+    channel.player->start(channel.buffer);
 }

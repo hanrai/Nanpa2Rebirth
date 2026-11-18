@@ -3,41 +3,31 @@
 
 #include <QObject>
 #include <QBuffer>
-#include <QAudioOutput>
-#include <QSharedPointer>
+#include <QAudioSink>
+#include <QAudioFormat>
 #include <QByteArray>
-#include "global.h"
-
-struct WaveFileHeader
-{
-    char        id[4];          // should always contain "RIFF"
-    int         totallength;    // total file length minus 8
-    char        wavefmt[8];     // should be "WAVEfmt "
-    int         format;         // 16 for PCM format
-    short       pcm;            // 1 for PCM format
-    short       channelCount;       // channels
-    int         sampleRate;      // sampling frequency
-    int         bytes_per_second;
-    short       bytes_by_capture;
-    short       bits_per_sample;
-    char        data[4];        // should always contain "data"
-    int         bytes_in_data;
-};
 
 class SoundManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit SoundManager(QObject *parent = 0);
-signals:
+    explicit SoundManager(QObject *parent = nullptr);
 
-public:
-    void Play(QByteArray data, bool bLoop = false);
+public slots:
+    void playBgm(QByteArray data, bool loop = false);
+    void playVoice(QByteArray data);
 
 private:
-    QByteArray wavData;
-    QSharedPointer<QBuffer> buffer;
-    QSharedPointer<QAudioOutput> player;
+    struct Channel {
+        QByteArray data;
+        QBuffer *buffer = nullptr;
+        QAudioSink *player = nullptr;
+    };
+
+    void startPlayback(Channel &channel, QByteArray data, bool loop);
+
+    Channel bgm;
+    Channel voice;
 };
 
 #endif // SOUNDMANAGER_H

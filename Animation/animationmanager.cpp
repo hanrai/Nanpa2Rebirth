@@ -270,7 +270,7 @@ void AnimationManager::FillBackground(PaintingInstruction *instruction)
                           instruction->width,
                           instruction->height,
                           &threadGpEngine->vrams[(instruction->commandVRamSelectorCombo>>1)&1],
-                          0, 0, 0, 0, 0, 0, (qint32)&instruction->height);
+                          0, 0, 0, 0, 0, 0, instruction->height);
     if(!(instruction->commandVRamSelectorCombo&1))
     pDrawing->updateWindow(instruction->targetLeft,
                            instruction->targetTop,

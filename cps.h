@@ -80,7 +80,7 @@ private:
     quint16 mapBuffer[4000];
     quint16 backupMapBuffer[4000];
     qint16 moveHistoryIndex;
-    moveHistory moveHistory[32];
+    struct moveHistory moveHistory[32];
     quint8 flag;
     quint8 myWidth;
     quint8 myHeight;

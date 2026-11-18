@@ -10,6 +10,7 @@
 #include "Flag.h"
 #include "MainWindow.h"
 #include "cps.h"
+#include "Reg32Audit.h"
 
 inline QString GetNumber(int number)
 {
@@ -24,16 +25,16 @@ Engine::Engine(QObject *parent, MainWindow *pMainWindow) :
     depth(0)
 {
     //Engine init begin
-    pConfig = 0;
-    this->pMainWindow = 0;
+    pConfig = nullptr;
+    this->pMainWindow = nullptr;
 
-    pFiles = 0;
-    pDrawing = 0;
-    pStack = 0;
-    pObject7 = 0;
-    pCps = 0;
-    pSoundInfo = 0;
-    directdraw = 0;
+    pFiles = nullptr;
+    pDrawing = nullptr;
+    pStack = nullptr;
+    pObject7 = nullptr;
+    pCps = nullptr;
+    pSoundInfo = nullptr;
+    directdraw = nullptr;
     field_1EC4_0 = 0;
     field_1EC6_0 = 0;
     field_1EC7_0 = 0;
@@ -160,7 +161,9 @@ Engine::Engine(QObject *parent, MainWindow *pMainWindow) :
 
     isCursorVisible=1;
 
-    pMainStruct = (char*)&gMainStruct;
+    // TEMP: Qt6 / x86_64 migration.
+    // Keep the legacy MES logical offset (0x1000) mapped to mesBuffer.
+    pMainStruct = reinterpret_cast<char*>(gMainStruct.mesBuffer) - 0x1000;
     depthCounter=0;
     isStop=false;
     bookmarksReady=false;
@@ -334,11 +337,35 @@ void Engine::StartEngine()
         case 0x14:
             depth++;
         {
+#if N2R_REG32_AUDIT
+            const quint32 reg32InsnStart = gStruct.gMesCursor - 1;
+#endif
             for(int index = getMes();;index++)
             {
                 QString cstr;
                 pReg32Bit[index]=Calculate(cstr);
                 sendMessage(QString("reg32Bit[%0] = %1;").arg(index).arg(pReg32Bit[index]));
+#if N2R_REG32_AUDIT
+                {
+                    const quint32 rawU32 = pReg32Bit[index];
+                    const quint32 structSlotU32 = (index >= 0 && index < 26)
+                            ? Reg32Audit_SlotU32ViaBookmark(Flag, index + 1)
+                            : rawU32;
+                    const quintptr structAddr = (index >= 0 && index < 26)
+                            ? reinterpret_cast<quintptr>(Flag->reg32Bit.addresses[index])
+                            : 0;
+                    Reg32Audit_Log(Reg32Audit_WriteSlot,
+                                   Flag->mesFileName,
+                                   reg32InsnStart,
+                                   /*selector*/ 0,
+                                   /*slotIndex*/ index,
+                                   rawU32,
+                                   /*elemIndex*/ index,
+                                   structSlotU32,
+                                   structAddr,
+                                   /*willDeref*/ false);
+                }
+#endif
                 if(!getMes())
                     break;
             }
@@ -361,10 +388,10 @@ void Engine::StartEngine()
 
 void Engine::sendMessage(QString message)
 {
-//    QString msg;
-//    for(unsigned int i=0;i<depth;i++)
-//        msg+="   ";
-//    qDebug()<<msg+message;
+   QString msg;
+   for(unsigned int i=0;i<depth;i++)
+       msg+="   ";
+   qDebug()<<msg+message;
 }
 
 unsigned char Engine::getMes(quint32 step)
@@ -398,7 +425,7 @@ void Engine::outputText2()
         char c=getMes();
         if(!c)
             break;
-        sendMessage(QString("Unknown OutputText2(\"%0\")").arg(QString(c,1)));
+        sendMessage(QString("Unknown OutputText2(\"%0\")").arg(c));
     }
 //    if(!Flag.dim16Bit.vRamIndex)
 //    {

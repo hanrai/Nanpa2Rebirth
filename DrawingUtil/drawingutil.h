@@ -3,9 +3,9 @@
 
 #include <QObject>
 #include <QImage>
-#include <windows.h>
+#include "Win32TypesCompat.h"
 #include "Flag.h"
-#include "Engine.h"
+#include "engine.h"
 
 class MainWindow;
 class Config;
