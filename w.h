@@ -1,6 +1,6 @@
 #ifndef W_H
 #define W_H
-#include "windows.h"
+#include "DrawingUtil/Win32TypesCompat.h"
 //#include <QtCore>
 //struct RGBQUAD
 //{

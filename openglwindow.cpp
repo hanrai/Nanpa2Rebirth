@@ -43,7 +43,7 @@
 #include <QtCore/QCoreApplication>
 
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLPaintDevice>
+#include <QOpenGLPaintDevice>
 #include <QtGui/QPainter>
 
 //! [1]

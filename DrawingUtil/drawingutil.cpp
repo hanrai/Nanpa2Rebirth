@@ -4,9 +4,9 @@
 #include <QGuiApplication>
 #include <QMutex>
 #include "drawingutil.h"
-//#include "MainWindow.h"
+#include "MainWindow.h"
 //#include "Files/DecodeArcMes.h"
-//#include "Decoder/decoder.h"
+#include "Decoder/decoder.h"
 
 DrawingUtil::DrawingUtil(MainWindow *pMainWindow, Config *pConfig, QObject *parent) :
     QObject(parent),
@@ -75,8 +75,8 @@ DrawingUtil::DrawingUtil(MainWindow *pMainWindow, Config *pConfig, QObject *pare
     logpe = this->pPalette->pLogPalette->logPalette.palPalEntry;
 
     //update signal
-    connect(this, &DrawingUtil::framebufferUpdated, pMainWindow, &MainWindow::on_framebufferUpdated);
-    connect(this, &DrawingUtil::paletteUpdated, pMainWindow, &MainWindow::on_paletteUpdated);
+    connect(this, &DrawingUtil::framebufferUpdated, pMainWindow, &MainWindow::updateFramebuffer);
+    connect(this, &DrawingUtil::paletteUpdated, pMainWindow, &MainWindow::updatePalette);
 }
 
 DrawingUtil::~DrawingUtil()

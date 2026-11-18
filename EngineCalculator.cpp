@@ -1,6 +1,7 @@
 #include "engine.h"
 #include <QStack>
 #include <QString>
+#include "Reg32Audit.h"
 
 int Engine::Calculate(QString &calstr)
 {
@@ -230,6 +231,9 @@ int Engine::Calculate(QString &calstr)
             break;
         case 0xF5:
         {
+#if N2R_REG32_AUDIT
+            const quint32 reg32InsnStart = gStruct.gMesCursor - 1;
+#endif
             int index = stack.pop();
             auto strIndex = str.pop();
             quint8 selector = getMes();
@@ -245,6 +249,39 @@ int Engine::Calculate(QString &calstr)
                 base32bit=(quint32*)&Flag->dim32Bit;
                 strBase=QString("(dim32Bit");
             }
+#if N2R_REG32_AUDIT
+            {
+                const int slotIndex = selector ? (selector - 1) : -1;
+                const quint32 slotU32 = selector
+                        ? Reg32Audit_SlotU32ViaBookmark(Flag, selector)
+                        : 0;
+                const quint32 pregU32 = (slotIndex >= 0)
+                        ? Reg32Audit_SlotU32ViaPReg(pReg32Bit, slotIndex)
+                        : 0;
+                const quintptr structAddr = (slotIndex >= 0 && slotIndex < 26)
+                        ? reinterpret_cast<quintptr>(Flag->reg32Bit.addresses[slotIndex])
+                        : reinterpret_cast<quintptr>(base32bit);
+                const bool willDeref = true;
+                Reg32Audit_Log(Reg32Audit_IndirectRead,
+                               Flag->mesFileName,
+                               reg32InsnStart,
+                               selector,
+                               slotIndex,
+                               slotU32 ? slotU32 : pregU32,
+                               index,
+                               pregU32,
+                               structAddr,
+                               willDeref);
+                if (Reg32Audit_ShouldForensicStop(selector))
+                {
+                    /* Record then stop: do not dereference the REG32 slot pointer. */
+                    stack.push(0);
+                    str.push(strBase + QString("[%0]):FORENSIC_STOP").arg(strIndex));
+                    isStop = true;
+                    break;
+                }
+            }
+#endif
             stack.push(base32bit[index]);
             str.push(strBase+QString("[%0]):%1").arg(strIndex).arg(base32bit[index]));
         }

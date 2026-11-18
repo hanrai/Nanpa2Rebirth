@@ -2,142 +2,138 @@
 #include <QPainter>
 #include <QtDebug>
 #include <QGuiApplication>
+#include <QPaintEvent>
+#include <QKeyEvent>
+#include <QResizeEvent>
+#include <cstring>
+#include <iterator>
 
 MainWindow::MainWindow(QWindow *parent) :
-    QRasterWindow(parent),
-    showCursor(true)
+    QRasterWindow(parent)
 {
-    //Init begin
-
-    //Init end
-
     setMinimumHeight(400);
     setMinimumWidth(640);
 
-    framebuffer=QImage(640, 400, QImage::Format_Indexed8);
+    framebuffer = QImage(640, 400, QImage::Format_Indexed8);
     framebuffer.fill(Qt::black);
+    displayBuffer = QImage(640, 400, QImage::Format_ARGB32_Premultiplied);
+    displayBuffer.fill(Qt::black);
 
-    cursorIndex = 0;
     inputFlag = 0;
     setTitle("Nanap2 rebirth engine WIP version. By hanrai@gmail.com");
 }
 
 bool MainWindow::checkInput(qint32 index)
 {
-    switch(index)
-    {
-    case 0:
-        if(inputFlag&0x0001 || inputFlag&0x0002)
-            return true;
-        return inputFlag&0x2000;
-    case 1:
-        if(inputFlag&0x0004)
-            return true;
-        return inputFlag&0x4000;
-    case 2:
-        if(inputFlag&0x0008)
-            return true;
-        return inputFlag&0x0010;
-    case 3:
-        if(inputFlag&0x0020)
-            return true;
-        return inputFlag&0x0040;
-    case 4:
-        if(inputFlag&0x0080)
-            return true;
-        return inputFlag&0x0100;
-    case 5:
-        if(inputFlag&0x0200)
-            return true;
-        return inputFlag&0x0400;
-    case 6:
-        return QGuiApplication::queryKeyboardModifiers()&Qt::ShiftModifier;
-    case 7:
-        return inputFlag&0x1000;
-    case 8:
-        return inputFlag&0x2000;
-    default:
-        break;
-    }
-    return false;
+    static const quint16 masks[] = {
+        InputMouseLeft | InputMouseRight | InputConfirm, // 0 confirm
+        InputCancel | InputAltCancel,                    // 1 cancel
+        InputUpKey | InputAltUp,                         // 2 up
+        InputDownKey | InputAltDown,                     // 3 down
+        InputLeftKey | InputAltLeft,                     // 4 left
+        InputRightKey | InputAltRight,                   // 5 right
+        0,                                               // 6 shift
+        InputControl,                                    // 7 control
+        InputConfirm,                                    // 8 confirm
+    };
+
+    if (index == 6)
+        return QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier;
+
+    if (index < 0 || index >= qint32(std::size(masks)))
+        return false;
+
+    return (inputFlag & masks[index]) != 0;
 }
 
 void MainWindow::paintEvent(QPaintEvent *event)
 {
-    QPainter painter(this);
-    if(geometry().width()<1 || geometry().height()<1
-            || framebuffer.width()<1 || framebuffer.height()<1)
+    if (geometry().width() < 1 || geometry().height() < 1
+            || displayBuffer.width() < 1 || displayBuffer.height() < 1)
         return;
-    if(!event->rect().intersects(viewportRect.toRect()))
+    if (!event->rect().intersects(viewportRect.toRect()))
         return;
 
     QRectF updateRect = event->rect().intersected(viewportRect.toRect());
     QRectF sourceRect = transback.mapRect(updateRect);
 
+    QPainter painter(this);
     painter.setClipRect(updateRect);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform,true);
-    painter.drawImage(updateRect, framebuffer.convertToFormat(QImage::Format_ARGB32_Premultiplied), sourceRect);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.drawImage(updateRect, displayBuffer, sourceRect);
 }
 
 void MainWindow::mountCursor()
 {
-    if(!showCursor)
+    if (!cursorVisible)
         return;
-    if(cursor.isNull())
+    if (cursor.isNull())
         return;
-//    QRectF cursorRect = transformer.mapRect(cursor.rect());
-//    QImage cursorImage(cursorRect.size().toSize(), QImage::Format_ARGB32_Premultiplied);
-//    QPainter painter(&cursorImage);
-//    painter.drawImage(cursorImage.rect(), cursor, cursor.rect());
-//    QPixmap cursorPixmap = QPixmap::fromImage(cursorImage);
-    //cur = QCursor(cursorPixmap);
     cur = QCursor(QPixmap::fromImage(cursor));
     setCursor(cur);
 }
 
+void MainWindow::rebuildDisplay(const QRect &rect)
+{
+    if (rect.isEmpty()) {
+        displayBuffer = framebuffer.convertToFormat(
+            QImage::Format_ARGB32_Premultiplied);
+        return;
+    }
+
+    const QRect clipped = rect.intersected(framebuffer.rect());
+    if (clipped.isEmpty())
+        return;
+
+    const QImage dirty = framebuffer.copy(clipped).convertToFormat(
+        QImage::Format_ARGB32_Premultiplied);
+    QPainter painter(&displayBuffer);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.drawImage(clipped.topLeft(), dirty);
+}
+
 void MainWindow::mouseMoveEvent(QMouseEvent *ev)
 {
-    if(!viewportRect.contains(ev->pos()))
-    {
+    const QPointF pos = ev->position();
+    if (!viewportRect.contains(pos)) {
         unsetCursor();
         return;
     }
     setCursor(cur);
 
-    cursorPosition = ev->pos();
+    cursorPosition = pos;
     cursorPos = transback.map(cursorPosition).toPoint();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *ev)
 {
-    switch(ev->key())
-    {
+    switch (ev->key()) {
     case Qt::Key_2:
     case Qt::Key_Down:
-        inputFlag |= 0x0020;
+        inputFlag |= InputDownKey;
         break;
     case Qt::Key_8:
     case Qt::Key_Up:
-        inputFlag |= 0x0008;
+        inputFlag |= InputUpKey;
         break;
     case Qt::Key_6:
     case Qt::Key_Right:
-        inputFlag |= 0x0200;
+        inputFlag |= InputRightKey;
         break;
     case Qt::Key_4:
     case Qt::Key_Left:
-        inputFlag |= 0x0080;
+        inputFlag |= InputLeftKey;
         break;
     case Qt::Key_Control:
-        inputFlag |= 0x1000;
+        inputFlag |= InputControl;
         break;
     case Qt::Key_Return:
     case Qt::Key_Enter:
     case Qt::Key_Space:
-        inputFlag |= 0x2000;
+        inputFlag |= InputConfirm;
         break;
     case Qt::Key_Escape:
-        inputFlag |= 0x4000;
+        inputFlag |= InputCancel;
         break;
     default:
         ev->ignore();
@@ -148,34 +144,33 @@ void MainWindow::keyPressEvent(QKeyEvent *ev)
 
 void MainWindow::keyReleaseEvent(QKeyEvent *ev)
 {
-    switch(ev->key())
-    {
+    switch (ev->key()) {
     case Qt::Key_2:
     case Qt::Key_Down:
-        inputFlag &= 0xFFDF;
+        inputFlag &= ~InputDownKey;
         break;
     case Qt::Key_8:
     case Qt::Key_Up:
-        inputFlag &= 0xFFF7;
+        inputFlag &= ~InputUpKey;
         break;
     case Qt::Key_6:
     case Qt::Key_Right:
-        inputFlag &= 0xFDFF;
+        inputFlag &= ~InputRightKey;
         break;
     case Qt::Key_4:
     case Qt::Key_Left:
-        inputFlag &= 0xFF7F;
+        inputFlag &= ~InputLeftKey;
         break;
     case Qt::Key_Control:
-        inputFlag &= 0xEFFF;
+        inputFlag &= ~InputControl;
         break;
     case Qt::Key_Return:
     case Qt::Key_Enter:
     case Qt::Key_Space:
-        inputFlag &= 0xDFFF;
+        inputFlag &= ~InputConfirm;
         break;
     case Qt::Key_Escape:
-        inputFlag &= 0xBFFF;
+        inputFlag &= ~InputCancel;
         break;
     default:
         ev->ignore();
@@ -186,13 +181,12 @@ void MainWindow::keyReleaseEvent(QKeyEvent *ev)
 
 void MainWindow::mousePressEvent(QMouseEvent *ev)
 {
-    switch(ev->button())
-    {
+    switch (ev->button()) {
     case Qt::LeftButton:
-        inputFlag |= 0x2000;
+        inputFlag |= InputConfirm;
         break;
     case Qt::RightButton:
-        inputFlag |= 0x4000;
+        inputFlag |= InputCancel;
         break;
     default:
         ev->ignore();
@@ -203,13 +197,12 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
 
 void MainWindow::mouseReleaseEvent(QMouseEvent *ev)
 {
-    switch(ev->button())
-    {
+    switch (ev->button()) {
     case Qt::LeftButton:
-        inputFlag &= 0xDFFF;
+        inputFlag &= ~InputConfirm;
         break;
     case Qt::RightButton:
-        inputFlag &= 0xBFFF;
+        inputFlag &= ~InputCancel;
         break;
     default:
         ev->ignore();
@@ -221,26 +214,23 @@ void MainWindow::mouseReleaseEvent(QMouseEvent *ev)
 void MainWindow::resizeEvent(QResizeEvent *ev)
 {
     Q_UNUSED(ev);
-    qreal ratio = (qreal)framebuffer.width()/(qreal)framebuffer.height();
-    qreal winWidth = geometry().width();
-    qreal winHeight = geometry().height();
-    qreal top,left,width,height;
+    const qreal ratio = qreal(framebuffer.width()) / qreal(framebuffer.height());
+    const qreal winWidth = geometry().width();
+    const qreal winHeight = geometry().height();
+    qreal top, left, width, height;
 
-    if(winWidth/winHeight >= ratio)
-    {
+    if (winWidth / winHeight >= ratio) {
         height = winHeight;
-        width = height*ratio;
-    }
-    else
-    {
+        width = height * ratio;
+    } else {
         width = winWidth;
-        height = width/ratio;
+        height = width / ratio;
     }
 
-    top = (winHeight-height)/2;
-    left = (winWidth-width)/2;
+    top = (winHeight - height) / 2;
+    left = (winWidth - width) / 2;
 
-    scale = width/framebuffer.width();
+    scale = width / framebuffer.width();
     viewportRect.setRect(left, top, width, height);
     transformer = QTransform(scale, 0, 0, scale, left, top);
     transback = transformer.inverted();
@@ -248,105 +238,50 @@ void MainWindow::resizeEvent(QResizeEvent *ev)
     update();
 }
 
-void MainWindow::on_Engine_hideCursor()
+void MainWindow::hideGameCursor()
 {
-    if(!showCursor)
+    if (!cursorVisible)
         return;
     setCursor(QCursor(Qt::BlankCursor));
-    showCursor = false;
+    cursorVisible = false;
 }
 
-void MainWindow::on_Engine_showCursor()
+void MainWindow::showGameCursor()
 {
-    if(showCursor)
+    if (cursorVisible)
         return;
-    showCursor = true;
+    cursorVisible = true;
     mountCursor();
 }
 
-void MainWindow::on_Engine_BGMStarted(QByteArray data, bool isLoop)
+void MainWindow::setAnimatedCursor(qint8 id)
 {
-    BGMData = data;
-    WaveFileHeader *header = (WaveFileHeader*)BGMData.data();
-
-    QAudioFormat format;
-    format.setSampleRate(header->sampleRate);
-    format.setChannelCount(header->channelCount);
-    format.setSampleSize(header->bits_per_sample);
-    format.setCodec("audio/pcm");
-    format.setByteOrder(QAudioFormat::LittleEndian);
-    format.setSampleType(QAudioFormat::SignedInt);
-
-    char* audioRawData = BGMData.data() + 44;
-
-    BGMBuffer = decltype(BGMBuffer)(new QBuffer(this));
-    BGMBuffer->setData(audioRawData, header->bytes_in_data);
-    BGMBuffer->open(QIODevice::ReadOnly);
-
-    BGMPlayer = decltype(BGMPlayer)(new QAudioOutput(format, this));
-    if(isLoop)
-        connect(BGMPlayer.data(), &QAudioOutput::stateChanged,
-                [&](QAudio::State state)
-        {
-            if(state == QAudio::IdleState)
-            {
-                BGMBuffer->seek(0);
-                BGMPlayer->start(BGMBuffer.data());
-            }
-        });
-
-    BGMPlayer->start(BGMBuffer.data());
-}
-
-void MainWindow::on_AnimationEngine_cursorAnimated(qint8 id)
-{
-    if(cursors.isEmpty())
+    if (cursors.isEmpty())
         return;
-    if(!showCursor)
+    if (!cursorVisible)
         return;
     cursor = cursors[id];
     mountCursor();
 }
 
-void MainWindow::on_paletteUpdated(QVector<QRgb> palette)
+void MainWindow::updatePalette(QVector<QRgb> palette)
 {
     framebuffer.setColorTable(palette);
+    rebuildDisplay();
     update();
 }
 
-void MainWindow::on_framebufferUpdated(QRect rect, QByteArray data)
+void MainWindow::updateFramebuffer(QRect rect, QByteArray data)
 {
-    quint8* fbuffer = framebuffer.bits();
-    for(int y=rect.top(); y<rect.bottom()+1; y++)
-        memcpy(fbuffer+y*framebuffer.width()+rect.left(),
-               data.data()+(y-rect.top())*rect.width(),
-               rect.width());
+    quint8 *fbuffer = framebuffer.bits();
+    for (int y = rect.top(); y < rect.bottom() + 1; y++)
+        memcpy(fbuffer + y * framebuffer.width() + rect.left(),
+               data.data() + (y - rect.top()) * rect.width(),
+               size_t(rect.width()));
+
+    rebuildDisplay(rect);
+
     QRect targetRect = transformer.mapRect(rect);
-    targetRect.adjust(-1,-1,1,1);
+    targetRect.adjust(-1, -1, 1, 1);
     update(targetRect.united(viewportRect.toRect()));
 }
-
-void MainWindow::on_Engine_voiceStarted(QByteArray data)
-{
-        voiceData = data;
-        WaveFileHeader *header = (WaveFileHeader*)voiceData.data();
-
-        QAudioFormat format;
-        format.setSampleRate(22050);
-        format.setChannelCount(1);
-        format.setSampleSize(16);
-        format.setCodec("audio/pcm");
-        format.setByteOrder(QAudioFormat::LittleEndian);
-        format.setSampleType(QAudioFormat::SignedInt);
-
-        char* audioRawData = voiceData.data()+44;
-
-        voiceBuffer = decltype(voiceBuffer)(new QBuffer(this));
-        voiceBuffer->setData(audioRawData, voiceData.size()-44);
-        voiceBuffer->open(QIODevice::ReadOnly);
-
-        voicePlayer = decltype(voicePlayer)(new QAudioOutput(format, this));
-
-        voicePlayer->start(voiceBuffer.data());
-}
-
