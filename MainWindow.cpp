@@ -51,13 +51,16 @@ void MainWindow::paintEvent(QPaintEvent *event)
     if (geometry().width() < 1 || geometry().height() < 1
             || displayBuffer.width() < 1 || displayBuffer.height() < 1)
         return;
+
+    QPainter painter(this);
+    painter.fillRect(event->rect(), Qt::black);
+
     if (!event->rect().intersects(viewportRect.toRect()))
         return;
 
     QRectF updateRect = event->rect().intersected(viewportRect.toRect());
     QRectF sourceRect = transback.mapRect(updateRect);
 
-    QPainter painter(this);
     painter.setClipRect(updateRect);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.drawImage(updateRect, displayBuffer, sourceRect);
